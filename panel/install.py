@@ -15,14 +15,44 @@ DESTINATION = Path.home() / 'Applications/Daily Levels.app'
 IDENTIFIER = 'local.tradingview.dailylevels'
 
 
+def link_receipt(application):
+    return application.parent / 'panel/application-link.json'
+
+
+def receipt_matches(destination, target, application):
+    try:
+        return json.loads(link_receipt(application).read_text()) == {
+            'identifier': IDENTIFIER, 'destination': str(destination.absolute()), 'target': str(target)}
+    except (OSError, ValueError):
+        return False
+
+
+def record_link(destination, application):
+    receipt = link_receipt(application)
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    temporary = receipt.with_name(receipt.name + '.' + uuid.uuid4().hex + '.tmp')
+    try:
+        temporary.write_text(json.dumps({'identifier': IDENTIFIER,
+            'destination': str(destination.absolute()), 'target': str(application.resolve())}) + '\n')
+        temporary.chmod(0o600)
+        temporary.replace(receipt)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def link_application(destination, application):
     """Retarget only our managed Applications link, preserving unrelated apps."""
     if destination.is_symlink():
         if destination.resolve() == application.resolve():
+            record_link(destination, application)
             return False
-        info = destination.resolve() / 'Contents/Info.plist'
-        if not info.is_file() or plistlib.loads(info.read_bytes()).get('CFBundleIdentifier') != IDENTIFIER:
-            raise RuntimeError('Applications link does not point to Daily Levels; leaving it untouched')
+        target = destination.resolve()
+        info = target / 'Contents/Info.plist'
+        identified = info.is_file() and plistlib.loads(info.read_bytes()).get('CFBundleIdentifier') == IDENTIFIER
+        recovered = not target.exists() and receipt_matches(destination, target, application)
+        if not identified and not recovered:
+            raise RuntimeError('Applications link does not point to Daily Levels; leaving it untouched. '
+                               'If this is an old broken shortcut, remove only that shortcut in Finder and rerun installation.')
     elif destination.exists():
         raise RuntimeError('Applications destination already exists; leaving it untouched')
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -32,6 +62,7 @@ def link_application(destination, application):
         temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)
+    record_link(destination, application)
     return True
 
 

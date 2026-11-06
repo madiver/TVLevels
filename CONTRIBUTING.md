@@ -39,6 +39,11 @@ the macOS and TradingView Desktop versions, selected pane, symbol, timeframe,
 session, and actions tested. Source tests, a successful build, an installed UI,
 and a chart drawing check are different levels of evidence; report each accurately.
 
+Keep MCP requests bounded, including partial output and blocked input. A timeout
+must not retry a chart mutation or reconnect to a different pane. Cancellation
+is best effort: preserve the existing binding for restoration and report when
+restoration cannot be verified. Cover those paths with disposable fake servers.
+
 ## Updating TradingView MCP
 
 The dependency is maintained at [madiver/TradingView-MCP](https://github.com/madiver/TradingView-MCP).

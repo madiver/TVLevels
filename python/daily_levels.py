@@ -4,11 +4,13 @@ import argparse
 import json
 import math
 import subprocess
+import sys
 import time
 from statistics import median
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from mcp_transport import StdioRPC
 from reaction_levels import reaction_levels, selection_rank, corridor_reach, daily_context, gap_corridors
 from window_policy import window_width_filter
 from gap_policy import gap_width_filter, historical_gap_evidence, historical_gap_rank
@@ -37,7 +39,7 @@ def selected_types(enabled_types=None):
     return enabled
 
 class MCP:
-    def __init__(self, root):
+    def __init__(self, root, *, request_timeout=30.0, startup_timeout=15.0):
         from runtime_config import resolve_mcp_root
         root = Path(root).resolve()
         self.mcp_root = resolve_mcp_root(root)
@@ -45,28 +47,20 @@ class MCP:
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
         self.ownership_path = root / 'python/.daily-levels-owned.json'
         self.details_path = root / '.local/panel/level-details.json'
-        self.seq = 0
-        self.request('initialize', {'protocolVersion': '2024-11-05', 'capabilities': {},
-                                   'clientInfo': {'name': 'daily-levels-python', 'version': '1.0'}})
-        self.send({'jsonrpc': '2.0', 'method': 'notifications/initialized'})
+        try:
+            self.rpc = StdioRPC(self.process, request_timeout)
+            self.request('initialize', {'protocolVersion': '2024-11-05', 'capabilities': {},
+                         'clientInfo': {'name': 'daily-levels-python', 'version': '1.0'}}, timeout=startup_timeout)
+            self.send({'jsonrpc': '2.0', 'method': 'notifications/initialized'})
+        except BaseException:
+            self.close()
+            raise
 
     def send(self, message):
-        self.process.stdin.write(json.dumps(message) + '\n')
-        self.process.stdin.flush()
+        self.rpc.send(message)
 
-    def request(self, method, params):
-        self.seq += 1
-        self.send({'jsonrpc': '2.0', 'id': self.seq, 'method': method, 'params': params})
-        while True:
-            line = self.process.stdout.readline()
-            if not line:
-                raise RuntimeError('MCP server disconnected')
-            response = json.loads(line)
-            if response.get('id') != self.seq:
-                continue
-            if 'error' in response:
-                raise RuntimeError(str(response['error']))
-            return response['result']
+    def request(self, method, params, *, timeout=None):
+        return self.rpc.request(method, params, timeout)
 
     def call(self, name, **arguments):
         result = self.request('tools/call', {'name': name, 'arguments': arguments})
@@ -81,12 +75,30 @@ class MCP:
         return PaneClient(self)
 
     def close(self):
-        self.process.terminate()
+        if self.process.poll() is None:
+            try:
+                self.process.terminate()
+            except ProcessLookupError:
+                pass
         try:
             self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.process.kill()
-            self.process.wait()
+            self.process.wait(timeout=5)
+        self.process.stdin.close()
+        self.process.stdout.close()
+
+
+def release_bound(client):
+    if not hasattr(client, 'release'):
+        return
+    failed = sys.exc_info()[0] is not None
+    try:
+        client.release()
+    except Exception:
+        # A release failure must not hide the action/restoration error.
+        if not failed:
+            raise
 
 
 def confirmed(bars, now=None):
@@ -699,8 +711,7 @@ def run(client, count=300, max_levels=5, dry_run=False, body_multiple=2.0, now=N
             save_details(client.details_path, result['scope'], result)
         return result
     finally:
-        if hasattr(client, 'release'):
-            client.release()
+        release_bound(client)
 
 
 def _run_bound(client, count, max_levels, dry_run, body_multiple, now, enabled, theme):
@@ -912,17 +923,21 @@ def _run_bound(client, count, max_levels, dry_run, body_multiple, now, enabled, 
         # Cleanup addresses the captured pane even if the user selected another.
         if hasattr(client, 'allow_inactive'):
             client.allow_inactive = True
-        state = client.call('chart_get_state')
-        if state['symbol'] != symbol:
-            raise RuntimeError('Original pane symbol changed; timeframe was not restored')
         try:
-            client.call('chart_set_session', session=session['session'])
-        finally:
-            client.call('chart_set_timeframe', timeframe=resolution)
-        if client.call('chart_get_state')['resolution'] != resolution:
-            raise RuntimeError('Original timeframe restoration failed')
-        if client.call('session_snapshot')['session'] != session['session']:
-            raise RuntimeError('Original session restoration failed')
+            state = client.call('chart_get_state')
+            if state['symbol'] != symbol:
+                raise RuntimeError('Original pane symbol changed; timeframe was not restored')
+            try:
+                client.call('chart_set_session', session=session['session'])
+            finally:
+                client.call('chart_set_timeframe', timeframe=resolution)
+            if client.call('chart_get_state')['resolution'] != resolution:
+                raise RuntimeError('Original timeframe restoration failed')
+            if client.call('session_snapshot')['session'] != session['session']:
+                raise RuntimeError('Original session restoration failed')
+        except Exception as error:
+            raise RuntimeError('Original chart restoration could not be verified. '
+                               'Check the original pane before trying again: ' + str(error)) from error
 
 
 def save_details(path, scope, result):
@@ -978,8 +993,7 @@ def clear_levels(client):
             preserve_completed(client, result, 'clear')
         return result
     finally:
-        if hasattr(client, 'release'):
-            client.release()
+        release_bound(client)
 
 
 def main():

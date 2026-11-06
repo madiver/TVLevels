@@ -61,6 +61,38 @@ class ApplicationLinkTests(unittest.TestCase):
             installer.link_application(self.destination, self.app)
         self.assertEqual(self.destination.readlink(), self.root / 'missing')
 
+    def test_moved_source_receipt_recovers_only_its_own_broken_link(self):
+        installer.link_application(self.destination, self.app)
+        source = self.root / 'TVLevels'
+        moved = self.root / 'moved TVLevels'
+        source.rename(moved)
+        moved_app = moved / '.local/Daily Levels.app'
+        self.assertTrue(self.destination.is_symlink())
+        self.assertFalse(self.destination.exists())
+        self.assertTrue(installer.link_application(self.destination, moved_app))
+        self.assertEqual(self.destination.resolve(), moved_app)
+        self.assertFalse(installer.link_application(self.destination, moved_app))
+
+    def test_receipt_does_not_authorize_an_unrelated_broken_link(self):
+        installer.link_application(self.destination, self.app)
+        self.destination.unlink()
+        self.destination.symlink_to(self.root / 'unrelated missing app')
+        with self.assertRaisesRegex(RuntimeError, 'leaving it untouched'):
+            installer.link_application(self.destination, self.app)
+        self.assertEqual(self.destination.readlink(), self.root / 'unrelated missing app')
+
+    def test_corrupt_receipt_cannot_replace_a_broken_link(self):
+        installer.link_application(self.destination, self.app)
+        installer.link_receipt(self.app).write_text('{')
+        self.app.rename(self.root / 'removed-app')
+        replacement = self.bundle('new-checkout/.local/Daily Levels.app')
+        installer.link_receipt(replacement).parent.mkdir(parents=True)
+        installer.link_receipt(replacement).write_text('{')
+        before = self.destination.readlink()
+        with self.assertRaisesRegex(RuntimeError, 'leaving it untouched'):
+            installer.link_application(self.destination, replacement)
+        self.assertEqual(self.destination.readlink(), before)
+
     def test_dock_url_normalization_does_not_force_repeated_updates(self):
         for url in (self.destination.as_uri(), self.destination.as_uri()+'/',
                     'file://'+str(self.destination)):

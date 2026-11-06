@@ -164,7 +164,9 @@ final class LevelPanel: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTab
                 if p.terminationStatus != 0 {
                     failed = true
                     message = (String(data: errorData.data, encoding: .utf8) ?? "Theme update failed").split(separator: "\n").last.map(String.init) ?? "Theme update failed"
-                    if message.hasPrefix("RuntimeError: ") { message = String(message.dropFirst(14)) }
+                    for prefix in ["RuntimeError: ", "mcp_transport.MCPTimeoutError: "] where message.hasPrefix(prefix) {
+                        message = String(message.dropFirst(prefix.count))
+                    }
                 } else {
                     let result = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                     message = "\(result?["symbol"] as? String ?? "Chart"): \(theme) drawing colors applied."
@@ -410,7 +412,9 @@ final class LevelPanel: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTab
                 if p.terminationStatus != 0 {
                     failed = true
                     message = (String(data: errorData.data, encoding: .utf8) ?? "Action failed").split(separator: "\n").last.map(String.init) ?? "Action failed"
-                    if message.hasPrefix("RuntimeError: ") { message = String(message.dropFirst(14)) }
+                    for prefix in ["RuntimeError: ", "mcp_transport.MCPTimeoutError: "] where message.hasPrefix(prefix) {
+                        message = String(message.dropFirst(prefix.count))
+                    }
                 } else {
                     guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CocoaError(.fileReadCorruptFile) }
                     payload = json

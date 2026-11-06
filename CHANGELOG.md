@@ -12,6 +12,9 @@
 - Local immutable records of completed Draw/Clear operations.
 - Pinned published TradingView MCP dependency and a single setup command for
   the panel and TradingView Debug launcher.
+- Safe recovery of managed app shortcuts after moving the source folder.
+- Bounded MCP startup, send, and response waits, with cancellation and explicit
+  reporting when chart restoration cannot be verified.
 - Offline unit/regression tests and public installation, development, security,
   and attribution documentation.
 
