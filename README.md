@@ -6,6 +6,19 @@ TradingView pane, and explains where each level came from.
 TVLevels runs locally through [TradingView MCP](https://github.com/madiver/TradingView-MCP).
 You do not need an AI assistant, an MCP client, or a second source checkout.
 
+## Platform support
+
+**TVLevels currently supports macOS only.** Its native panel uses Apple's AppKit,
+and its installer requires macOS and Apple's command-line tools. There is no
+Windows version of the TVLevels panel or installer at present.
+
+The separate **TradingView MCP** project supports Windows. Windows users can
+follow its [setup guide](https://github.com/madiver/TradingView-MCP/blob/main/SETUP_GUIDE.md)
+and [Windows launcher instructions](https://github.com/madiver/TradingView-MCP/blob/main/launcher/windows/README.txt)
+to use that bridge with TradingView Desktop. Installing the bridge does not
+install the TVLevels panel. Supporting TVLevels on Windows would require a
+Windows-compatible UI and installer.
+
 ## What it does
 
 - Daily support, resistance, gaps, candle windows, and prior support/resistance.
