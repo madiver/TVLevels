@@ -1,0 +1,16 @@
+.local/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+tvlevels.json
+python/.daily-levels-owned.json
+python/.daily-levels-owned.tmp
+screenshots/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx

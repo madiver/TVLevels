@@ -1,0 +1,6 @@
+{
+  "tradingview_mcp": {
+    "repository": "https://github.com/madiver/TradingView-MCP.git",
+    "commit": "4f1d83e3ac6b8e99ac8ca20961677f62843f114b"
+  }
+}
